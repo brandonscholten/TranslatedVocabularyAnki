@@ -4,7 +4,6 @@ import math
 import shutil
 import string
 from concurrent.futures import ThreadPoolExecutor
-from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -17,157 +16,9 @@ from tqdm import tqdm
 
 app = typer.Typer()
 
-
-@lru_cache()
-def get_language_names() -> dict:
-    """Get dictionary mapping of language codes to full language names."""
-    deepl_translator = deepl.Translator(
-        auth_key=Path(".deepl_auth").read_text().strip()
-    )
-
-    language_names = {}
-    for language in deepl_translator.get_source_languages():
-        language_names[language.code.lower()] = language.name
-
-    for language in deepl_translator.get_target_languages():
-        language_names[language.code.lower()] = language.name
-
-    return language_names
-
-
-def check_languages(
-    source_language: str,
-    target_language: str,
-    verification_language: Optional[str] = None,
-):
-    """Verifies that all configured languages are correct and turns them to lowercase."""
-    source_language = source_language.lower()
-    target_language = target_language.lower()
-    verification_language = (
-        verification_language.lower()
-        if verification_language is not None
-        else source_language
-    )
-
-    deepl_translator = deepl.Translator(
-        auth_key=Path(".deepl_auth").read_text().strip()
-    )
-    deepl_source_languages = {
-        l.code.lower(): l.name for l in deepl_translator.get_source_languages()
-    }
-    deepl_target_languages = {
-        l.code.lower(): l.name for l in deepl_translator.get_target_languages()
-    }
-
-    if source_language not in deepl_source_languages:
-        raise ValueError(
-            f"'{source_language}' is not a valid Deepl source language! Available options:\n"
-            + json.dumps(deepl_source_languages, indent=4, sort_keys=True)
-        )
-    if target_language not in deepl_target_languages:
-        raise ValueError(
-            f"'{target_language}' is not a valid Deepl target language! Available options:\n"
-            + json.dumps(deepl_target_languages, indent=4, sort_keys=True)
-        )
-    if verification_language not in deepl_target_languages:
-        raise ValueError(
-            f"Verification language '{verification_language}' is not a valid Deepl target language!"
-            " Available options:\n"
-            + json.dumps(deepl_target_languages, indent=4, sort_keys=True)
-        )
-
-    if source_language not in googletrans.LANGUAGES:
-        raise ValueError(
-            f"Source language '{source_language}' is not supported by Google Translate! "
-            "Available options:\n"
-            + json.dumps(googletrans.LANGUAGES, indent=4, sort_keys=True)
-        )
-    if target_language.split("-")[0] not in googletrans.LANGUAGES:
-        raise ValueError(
-            f"Target language '{target_language}' is not supported by Google Translate! "
-            "Available options:\n"
-            + json.dumps(googletrans.LANGUAGES, indent=4, sort_keys=True)
-        )
-    if verification_language.split("-")[0] not in googletrans.LANGUAGES:
-        raise ValueError(
-            f"Verification language '{verification_language}' is not supported by Google Translate!"
-            " Available options:\n"
-            + json.dumps(googletrans.LANGUAGES, indent=4, sort_keys=True)
-        )
-
-    return source_language, target_language, verification_language
-
-
-def load_vocab(filepath: Path) -> tuple[dict[int, str], dict[int, list[str]]]:
-    """Loads the vocabulary entries and tags from the provided CSV filepath."""
-    input_vocab = filepath.read_text().strip().splitlines()
-
-    vocab_dict, tag_dict = {}, {}
-    for line in input_vocab:
-        # Allow for comments
-        if line.startswith("#"):
-            continue
-        index, phrase, *tags = line.strip().split("\t")
-        index = int(index)
-        if index in vocab_dict:
-            raise ValueError(
-                f"ID {index} of '{line}' is used twice! "
-                f"First occurrence:\n'{index}\t{vocab_dict[index]}'"
-            )
-
-        vocab_dict[index] = phrase
-        tag_dict[index] = tags
-
-    return vocab_dict, tag_dict
-
-
-def translate_deepl(
-    input_vocab: dict[int, str],
-    target_language: str,
-    source_language: str,
-    verification_language: str,
-) -> dict[int, tuple[str, str]]:
-    """Translates the input vocabulary to the target language and verification
-    language using Deepl.
-    Uses a Deepl API key that should be stored at `.deepl_auth`.
-    """
-    output_vocab = {}
-
-    # Separate function to translate a single phrase so we can multithread
-    def translate_phrase(args):
-        id, phrase = args
-
-        deepl_translator = deepl.Translator(
-            auth_key=Path(".deepl_auth").read_text().strip()
-        )
-
-        deepl_result = deepl_translator.translate_text(
-            phrase,
-            source_lang=source_language,
-            target_lang=target_language,
-            split_sentences=0,
-        )
-
-        verification_result = deepl_translator.translate_text(
-            deepl_result.text,
-            source_lang=target_language,
-            target_lang=verification_language,
-            split_sentences=0,
-        )
-
-        output_vocab[id] = (deepl_result.text, verification_result.text)
-
-    with ThreadPoolExecutor() as executor:
-        for _ in tqdm(
-            executor.map(translate_phrase, input_vocab.items()),
-            desc="Obtaining Deepl translations...",
-            total=len(input_vocab),
-        ):
-            # We only loop to get a nice progress bar
-            pass
-
-    return output_vocab
-
+"""
+This file contains the command-line interface for translating vocab lists.
+"""
 
 def translate_google(
     input_vocab: dict[int, str], target_language: str, source_language: str

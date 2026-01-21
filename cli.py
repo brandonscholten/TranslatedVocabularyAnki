@@ -1,9 +1,7 @@
 import datetime
 import json
-import math
 import shutil
 import string
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
 
@@ -19,63 +17,6 @@ app = typer.Typer()
 """
 This file contains the command-line interface for translating vocab lists.
 """
-
-def translate_google(
-    input_vocab: dict[int, str], target_language: str, source_language: str
-) -> dict[int, str]:
-    """Batch-translates the entire input vocabulary to the target language using
-    Google Translate."""
-    google_translator = googletrans.Translator()
-    values = list(input_vocab.values())
-    batch_size = 20
-    start_idx = 0
-    translations = []
-
-    # Google Translate doesn't distinguish between e.g. EN-US and EN-GB
-    target_language = target_language.split("-")[0].lower()
-    source_language = source_language.split("-")[0].lower()
-
-    # Translate in batches of 20 phrases and add outputs to translations list
-    for start_idx in tqdm(
-        range(0, len(values), batch_size),
-        desc="Obtaining batch Google translations...",
-        total=math.ceil(len(values) / batch_size),
-    ):
-        batch_translations = google_translator.translate(
-            values[start_idx : start_idx + batch_size],
-            source=source_language,
-            dest=target_language,
-        )
-        translations.extend(batch_translations)
-        start_idx += batch_size
-
-    return {
-        id: translation.text
-        for id, translation in zip(input_vocab.keys(), translations, strict=True)
-    }
-
-
-def process_translations(deepl: str, google: str, verification: str) -> tuple[str, str]:
-    """Postprocess the translation results for a given phrase to remove duplicates."""
-    unique_phrases = {}
-
-    for part in deepl.split(" / "):
-        if (p := part.lower()) not in unique_phrases:
-            unique_phrases[p] = part
-
-    for part in google.split(" / "):
-        if (p := part.lower()) not in unique_phrases:
-            unique_phrases[p] = part
-
-    verification_phrases = {}
-    for part in verification.split(" / "):
-        if (p := part.lower()) not in verification_phrases:
-            verification_phrases[p] = part
-
-    return " / ".join(unique_phrases.values()), " / ".join(
-        verification_phrases.values()
-    )
-
 
 def get_pronunciations(
     vocab: dict[int, str], language: str, output_dir: Path

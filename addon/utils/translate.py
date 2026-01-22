@@ -3,6 +3,7 @@ from pathlib import Path
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
+from gtts import gTTS
 import math
 
 """
@@ -131,4 +132,23 @@ def process_translations(deepl: str, google: str, verification: str) -> tuple[st
 
     return " / ".join(unique_phrases), " / ".join(verification_phrases)
 
+def get_pronunciations(
+    vocab: dict[int, str], language: str, output_dir: Path
+) -> dict[int, dict]:
+    """
+    Use gTTS to obtain TTS samples for the entire vocabulary. Downloads MP3 files to the specified folder and
+    returns the vocab with references to those files.
+    """
 
+    lang = language.lower()
+
+    vocab_with_pronunciations = vocab.copy()
+    for id, value in tqdm(
+        vocab.items(), desc="Obtaining pronunciations...", total=len(vocab)
+    ):
+        speak = gTTS(text=value[language], lang=lang, slow=False) #TODO: make slowness configurable?
+        path = str(output_dir.joinpath(f"{id}.mp3"))
+        speak.save(path)
+        vocab_with_pronunciations[id]["pronunciation_file"] = path
+
+    return vocab_with_pronunciations
